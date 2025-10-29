@@ -66,6 +66,18 @@
   - Separation constraints for hierarchical layouts
   - Random layout for initial positioning
   - **CLI Binaries**: Complete command-line tools for SGD and Omega layout algorithms
+  - **Kernel-SGD**: Diffusion kernel-based SGD layout algorithm (2025-10-29)
+    - **Complete Implementation**: Five-module architecture for clean separation of concerns
+    - **New Crates**: Created `petgraph-layout-kernel-sgd` and `petgraph-linalg-spmv`
+    - **Core Components**:
+      - Power method for λ_max estimation
+      - Chebyshev polynomial approximation for exp(-tL)
+      - Hutchinson trace estimator with symmetry optimization
+      - DiffusionKernel random access interface
+      - KernelSgd builder pattern and SGD integration
+    - **Python Bindings**: Complete PyO3 wrappers for both DiffusionKernel and KernelSgd
+    - **Test Coverage**: 25/25 tests passing (18 Rust + 7 Python)
+    - **Key Features**: Memory-efficient O(n × num_vectors) storage, random access element queries, numerical stability
 
 - ✅ **CLI Tools & Output Formats**
 

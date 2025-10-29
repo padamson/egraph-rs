@@ -113,6 +113,41 @@
 
 - **Stress Majorization**: Iterative stress minimization
 
+- **Kernel-SGD**: Diffusion kernel-based SGD layout algorithm
+
+  - **Purpose**: Uses exp(-tL) diffusion kernel for spectral distance preservation where L is the graph Laplacian
+  - **Location**: `crates/layout/kernel-sgd/` and `crates/linalg/spmv/`
+  - **Architecture**: Five-module design for clean separation of concerns
+    - `power_method.rs`: Estimates maximum eigenvalue λ_max of graph Laplacian
+    - `chebyshev.rs`: Approximates exp(-tL) using Chebyshev polynomial expansion
+    - `hutchinson.rs`: Symmetry-optimized estimation of kernel matrix elements
+    - `diffusion_kernel.rs`: Random access interface to kernel matrix elements
+    - `kernel_sgd.rs`: Builder pattern and SGD integration
+  - **Core Components**:
+
+    ```rust
+    // Random access to diffusion kernel matrix
+    let dk = DiffusionKernel::new(&graph, |_| 1.0f32, 1000.0, 10, 50, &mut rng);
+    let k_ij = dk.get(i, j);  // O(num_vectors) query time
+
+    // Build SGD instance
+    let kernel_sgd = KernelSgd::new()
+        .t(1000.0)           // Diffusion time parameter
+        .num_vectors(50)     // Hutchinson vectors
+        .degree(10)          // Chebyshev polynomial degree
+        .k(30)               // Random pairs per node
+        .min_dist(1e-3);
+    let sgd = kernel_sgd.build(&graph, |_| 1.0, &mut rng);
+    ```
+
+  - **Key Features**:
+    - **Random Access**: DiffusionKernel provides on-demand element queries
+    - **Memory Efficiency**: O(n × num_vectors) vs O(n²) for full matrix
+    - **Numerical Stability**: Chebyshev approximation with proper scaling
+    - **Symmetry Optimization**: K[i,j] = K[j,i] numerically guaranteed
+  - **Complexity**: O(degree × (|V| + |E|) × num_vectors) for kernel construction
+  - **Python Bindings**: Complete PyO3 wrapper with all parameters accessible
+
 ## Community Detection
 
 - **Unified Trait-Based Interface**:
