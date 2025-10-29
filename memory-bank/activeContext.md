@@ -40,6 +40,153 @@ The project has reached a mature state with comprehensive functionality across m
 
 ## Recent Changes
 
+- **Kernel-SGD Layout Algorithm Implementation (2025-10-29)**
+
+  - **Complete Diffusion Kernel-Based SGD Implementation**: Added new kernel-sgd layout algorithm using diffusion kernel exp(-tL) with efficient Chebyshev polynomial approximation and Hutchinson trace estimation
+
+  - **New Crates Created**:
+
+    - **petgraph-linalg-spmv** (`crates/linalg/spmv/`):
+
+      - Sparse symmetric matrix representation optimized for graph Laplacians
+      - Efficient matrix-vector product with O(|V| + |E|) complexity
+      - Edge list format storing only lower triangular part for memory efficiency
+      - Support for scale-and-shift operations needed for Chebyshev approximation
+      - Comprehensive testing with 6 unit tests
+
+    - **petgraph-layout-kernel-sgd** (`crates/layout/kernel-sgd/`):
+      - Five-module architecture for clean separation of concerns
+      - Complete builder pattern API similar to Omega layout algorithm
+      - 15 comprehensive tests covering all functionality
+
+  - **Core Algorithm Components**:
+
+    - **Power Method** (`power_method.rs`):
+
+      - Estimates maximum eigenvalue λ_max of graph Laplacian
+      - Uses iterative refinement with configurable tolerance
+      - Optimized for sparse symmetric matrices
+      - Tests verify accuracy on identity, scaled identity, and tridiagonal matrices
+
+    - **Chebyshev Polynomial Approximation** (`chebyshev.rs`):
+
+      - Approximates exp(-tL) using Chebyshev polynomial expansion
+      - Clenshaw's recurrence algorithm for numerical stability
+      - O(d _ (|V| + |E|) _ k) complexity where d=degree, k=num_vectors
+      - Chebyshev-Gauss quadrature for coefficient computation
+      - Sparse matrix-vector products for efficient evaluation
+
+    - **Hutchinson Trace Estimator** (`hutchinson.rs`):
+
+      - Symmetry-optimized estimation of kernel matrix elements
+      - K[i,j] ≈ (1/2k)[Σ V[i,l]*KV[j,l] + Σ V[j,l]*KV[i,l]]
+      - Effectively doubles sample count by using K[i,j] = K[j,i]
+      - Rademacher random vectors (±1) for unbiased estimation
+      - Separate handling for diagonal and off-diagonal elements
+
+    - **Distance Computation** (`distance.rs`):
+
+      - Euclidean distance from kernel inner product: d²(i,j) = K[i,i] + K[j,j] - 2K[i,j]
+      - Numerical stability with non-negative distance enforcement
+      - Symmetric distance computation verified by tests
+
+    - **KernelSgd Builder** (`kernel_sgd.rs`):
+      - Unified builder pattern API with method chaining
+      - Automatic λ_max estimation or externally provided value
+      - Laplacian matrix construction from graph edges
+      - Node pair generation combining edges and random pairs
+      - Integration with existing SGD framework
+
+  - **Configurable Parameters**:
+
+    ```rust
+    let mut kernel_sgd = KernelSgd::new();
+    kernel_sgd
+        .t(1000.0)           // Diffusion time parameter
+        .num_vectors(50)     // Hutchinson vectors (effective 100 with symmetry)
+        .degree(10)          // Chebyshev polynomial degree
+        .k(30)               // Random pairs per node
+        .min_dist(1e-3);     // Minimum distance
+
+    let sgd = kernel_sgd.build(&graph, |_| 1.0, &mut rng);
+    ```
+
+  - **Algorithm Workflow**:
+
+    1. **Laplacian Construction**: Build weighted Laplacian matrix from graph
+    2. **λ_max Estimation**: Use power method to find maximum eigenvalue
+    3. **Matrix Scaling**: Scale L to [-1, 1] range: L' = (2L/λ_max) - I
+    4. **Random Vectors**: Generate Rademacher vectors (±1 entries)
+    5. **Chebyshev Approximation**: Compute KV = exp(-tL) @ V
+    6. **Hutchinson Estimation**: Create estimator for kernel element queries
+    7. **Distance Computation**: Compute distances from kernel matrix
+    8. **Node Pair Generation**: Create SGD instance with kernel-based distances
+
+  - **Technical Implementation Details**:
+
+    - **Sparse Matrix Format**: Lower triangular storage (i < j) to avoid redundancy
+    - **Symmetry Exploitation**: Off-diagonal queries use both K[i,j] and K[j,i]
+    - **Numerical Stability**: Proper handling of zero eigenvalues and near-zero distances
+    - **Memory Efficiency**: In-place operations and reuse of data structures
+    - **Type Safety**: Comprehensive trait bounds for Float + Sum + Default + ScalarOperand
+
+  - **Dependency Management**:
+
+    - **Rust Standard Library Only**: No rand_pcg, using rand::rngs::StdRng
+    - **ndarray Integration**: Array1/Array2 for efficient numerical computations
+    - **petgraph Integration**: Works with any graph type implementing required traits
+    - **Workspace Integration**: Added to root Cargo.toml workspace members
+
+  - **Quality Assurance**:
+
+    - **15/15 Tests Passing**: Complete test coverage across all modules
+    - **Zero Warnings**: Clean compilation with cargo clippy
+    - **Comprehensive Documentation**: Detailed module and function documentation
+    - **Mathematical Verification**: Tests validate against known mathematical properties
+
+  - **Integration with Existing Systems**:
+
+    - **SGD Framework**: Generates node pairs compatible with existing Sgd struct
+    - **Drawing Spaces**: Works with all drawing spaces (Euclidean2d, Spherical, etc.)
+    - **Omega Comparison**: Similar builder pattern and parameter configuration
+    - **Consistent API**: Follows project conventions for builder pattern design
+
+  - **Files Created**:
+
+    - **`crates/linalg/spmv/`**: Complete sparse matrix-vector product crate (3 files)
+    - **`crates/layout/kernel-sgd/`**: Complete kernel-sgd layout crate (6 files)
+    - **Tests**: Comprehensive unit tests in each module
+
+  - **Files Modified**:
+
+    - **`Cargo.toml`**: Added kernel-sgd and spmv to workspace members
+
+  - **Performance Characteristics**:
+
+    - **Construction**: O(|E|) for Laplacian building
+    - **λ_max Estimation**: O(iterations \* (|V| + |E|))
+    - **Chebyshev Approximation**: O(degree _ (|V| + |E|) _ num_vectors)
+    - **Node Pair Generation**: O(k \* |V|) for random pairs
+    - **Overall Complexity**: Dominated by Chebyshev approximation phase
+
+  - **Benefits Achieved**:
+
+    - **Spectral Distance Preservation**: Diffusion kernel captures graph structure
+    - **Efficient Approximation**: Chebyshev polynomials avoid explicit matrix exponentiation
+    - **Scalable**: Sparse matrix operations suitable for large graphs
+    - **Configurable**: All parameters tunable for quality/performance trade-offs
+    - **Production Ready**: Comprehensive testing and documentation
+
+  - **Integration Status**:
+    - ✅ **Sparse Matrix Operations**: Complete with efficient spmv implementation
+    - ✅ **Eigenvalue Estimation**: Power method with proper convergence
+    - ✅ **Chebyshev Approximation**: Numerically stable polynomial evaluation
+    - ✅ **Hutchinson Estimation**: Symmetry-optimized kernel queries
+    - ✅ **Distance Computation**: Euclidean distance from inner products
+    - ✅ **Builder Pattern**: Full parameter configuration support
+    - ✅ **Test Coverage**: 15 comprehensive tests all passing
+    - ✅ **Documentation**: Complete API documentation
+
 - **Louvain Clustering Algorithm Fix (2025-10-18)**
 
   - **Critical Bug Fixes**: Fixed three major issues in the Louvain community detection algorithm that were causing test failures
