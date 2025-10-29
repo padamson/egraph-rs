@@ -2,6 +2,7 @@
 //!
 //! This module provides Python bindings for various SGD-based layout algorithms.
 
+mod diffusion_kernel;
 mod full;
 mod kernel_sgd;
 mod omega;
@@ -11,6 +12,7 @@ mod sparse;
 
 use pyo3::prelude::*;
 
+pub use self::diffusion_kernel::PyDiffusionKernel;
 pub use self::full::PyFullSgd;
 pub use self::kernel_sgd::PyKernelSgd;
 pub use self::omega::PyOmega;
@@ -36,6 +38,7 @@ pub fn register(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyKernelSgd>()?;
     m.add_class::<PyOmega>()?;
     m.add_class::<PySgd>()?;
+    m.add_class::<PyDiffusionKernel>()?;
 
     Ok(())
 }

@@ -1,15 +1,11 @@
 //! KernelSgd builder for creating SGD instances using diffusion kernel distances.
 
-use crate::chebyshev::chebyshev_approximation;
-use crate::distance::compute_distance;
-use crate::hutchinson::{generate_rademacher_vectors, HutchinsonEstimator};
-use crate::power_method::estimate_lambda_max;
+use crate::diffusion_kernel::DiffusionKernel;
 use petgraph::visit::{EdgeRef, IntoEdges, IntoNodeIdentifiers, NodeCount, NodeIndexable};
 use petgraph_drawing::{DrawingIndex, DrawingValue};
 use petgraph_layout_sgd::Sgd;
-use petgraph_linalg_spmv::SparseSymmetricMatrix;
 use rand::Rng;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// KernelSgd builder for creating SGD instances from diffusion kernel distances.
 ///
@@ -96,7 +92,7 @@ where
     ///
     /// # Returns
     /// A new SGD instance configured with kernel-based distances
-    pub fn build<G, F, R>(&self, graph: G, mut length: F, rng: &mut R) -> Sgd<S>
+    pub fn build<G, F, R>(&self, graph: G, length: F, rng: &mut R) -> Sgd<S>
     where
         G: IntoEdges + IntoNodeIdentifiers + NodeIndexable + NodeCount + Copy,
         G::NodeId: DrawingIndex,
@@ -104,13 +100,14 @@ where
         R: Rng,
         S: std::iter::Sum + Default,
     {
-        // Build Laplacian matrix
-        let laplacian = build_laplacian(graph, &mut length);
+        // Create DiffusionKernel with automatic lambda_max estimation
+        let kernel =
+            DiffusionKernel::new(graph, length, self.t, self.degree, self.num_vectors, rng);
 
-        // Estimate lambda_max using power method
-        let lambda_max = estimate_lambda_max(&laplacian, rng, 100, S::from_f32(1e-6).unwrap());
+        // Generate node pairs with kernel-based distances
+        let node_pairs = generate_node_pairs(graph, &kernel, self.min_dist, self.k, rng);
 
-        self.build_with_lambda_max(graph, length, lambda_max, rng)
+        Sgd::new(node_pairs)
     }
 
     /// Builds an SGD instance with externally provided lambda_max.
@@ -126,7 +123,7 @@ where
     pub fn build_with_lambda_max<G, F, R>(
         &self,
         graph: G,
-        mut length: F,
+        length: F,
         lambda_max: S,
         rng: &mut R,
     ) -> Sgd<S>
@@ -137,22 +134,19 @@ where
         R: Rng,
         S: std::iter::Sum + Default + ndarray::ScalarOperand,
     {
-        let n = graph.node_count();
-
-        // Build Laplacian matrix
-        let laplacian = build_laplacian(graph, &mut length);
-
-        // Generate Rademacher random vectors
-        let v = generate_rademacher_vectors(n, self.num_vectors, rng);
-
-        // Compute K @ V using Chebyshev approximation
-        let kv = chebyshev_approximation(&laplacian, self.t, self.degree, lambda_max, &v);
-
-        // Create Hutchinson estimator
-        let estimator = HutchinsonEstimator::new(v, kv);
+        // Create DiffusionKernel with provided lambda_max
+        let kernel = DiffusionKernel::new_with_lambda_max(
+            graph,
+            length,
+            self.t,
+            self.degree,
+            lambda_max,
+            self.num_vectors,
+            rng,
+        );
 
         // Generate node pairs with kernel-based distances
-        let node_pairs = generate_node_pairs(graph, &estimator, self.min_dist, self.k, rng);
+        let node_pairs = generate_node_pairs(graph, &kernel, self.min_dist, self.k, rng);
 
         Sgd::new(node_pairs)
     }
@@ -167,52 +161,10 @@ where
     }
 }
 
-/// Builds a graph Laplacian matrix from edge weights.
-fn build_laplacian<G, F, S>(graph: G, length: &mut F) -> SparseSymmetricMatrix<S>
-where
-    G: IntoEdges + IntoNodeIdentifiers + NodeIndexable + NodeCount,
-    G::NodeId: DrawingIndex,
-    F: FnMut(G::EdgeRef) -> S,
-    S: DrawingValue + Default,
-{
-    let n = graph.node_count();
-
-    // Create node index mapping
-    let node_indices: HashMap<G::NodeId, usize> = graph
-        .node_identifiers()
-        .enumerate()
-        .map(|(i, node_id)| (node_id, i))
-        .collect();
-
-    let mut matrix = SparseSymmetricMatrix::new(n);
-    let mut degrees = vec![S::zero(); n];
-
-    // Process edges
-    for edge in graph.edge_references() {
-        let i = node_indices[&edge.source()];
-        let j = node_indices[&edge.target()];
-        let weight = length(edge);
-
-        if i != j {
-            let (min_idx, max_idx) = if i < j { (i, j) } else { (j, i) };
-            matrix.add_edge(min_idx, max_idx, -weight);
-            degrees[i] += weight;
-            degrees[j] += weight;
-        }
-    }
-
-    // Set diagonal elements (degrees)
-    for i in 0..n {
-        matrix.set_diagonal(i, degrees[i]);
-    }
-
-    matrix
-}
-
 /// Generates node pairs with distances computed from the diffusion kernel.
 fn generate_node_pairs<G, S, R>(
     graph: G,
-    estimator: &HutchinsonEstimator<S>,
+    kernel: &DiffusionKernel<S>,
     min_dist: S,
     k: usize,
     rng: &mut R,
@@ -223,6 +175,8 @@ where
     S: DrawingValue + std::iter::Sum,
     R: Rng,
 {
+    use std::collections::HashMap;
+
     let n = graph.node_count();
 
     // Create node index mapping
@@ -245,7 +199,13 @@ where
 
             if !used_pairs.contains(&pair_key) {
                 used_pairs.insert(pair_key);
-                let distance = compute_distance(estimator, i, j).max(min_dist);
+                // Compute distance from kernel matrix elements
+                let k_ii = kernel.get(i, i);
+                let k_jj = kernel.get(j, j);
+                let k_ij = kernel.get(i, j);
+                let distance = (k_ii + k_jj - S::from_f32(2.0).unwrap() * k_ij)
+                    .sqrt()
+                    .max(min_dist);
                 let weight = S::one() / (distance * distance);
                 node_pairs.push((i, j, distance, distance, weight, weight));
             }
@@ -261,7 +221,13 @@ where
 
                 if !used_pairs.contains(&pair_key) {
                     used_pairs.insert(pair_key);
-                    let distance = compute_distance(estimator, i, j).max(min_dist);
+                    // Compute distance from kernel matrix elements
+                    let k_ii = kernel.get(i, i);
+                    let k_jj = kernel.get(j, j);
+                    let k_ij = kernel.get(i, j);
+                    let distance = (k_ii + k_jj - S::from_f32(2.0).unwrap() * k_ij)
+                        .sqrt()
+                        .max(min_dist);
                     let weight = S::one() / (distance * distance);
                     node_pairs.push((i, j, distance, distance, weight, weight));
                 }
@@ -304,26 +270,6 @@ mod tests {
         assert_eq!(kernel_sgd.degree, 20);
         assert_eq!(kernel_sgd.k, 50);
         assert_eq!(kernel_sgd.min_dist, 1e-2);
-    }
-
-    #[test]
-    fn test_build_laplacian() {
-        let mut graph = Graph::new_undirected();
-        let n0 = graph.add_node(());
-        let n1 = graph.add_node(());
-        let n2 = graph.add_node(());
-        graph.add_edge(n0, n1, ());
-        graph.add_edge(n1, n2, ());
-
-        let laplacian: SparseSymmetricMatrix<f64> = build_laplacian(&graph, &mut |_| 1.0);
-
-        assert_eq!(laplacian.dim(), 3);
-        // Diagonal should be degrees: [1, 2, 1]
-        assert_eq!(laplacian.diagonal()[0], 1.0);
-        assert_eq!(laplacian.diagonal()[1], 2.0);
-        assert_eq!(laplacian.diagonal()[2], 1.0);
-        // Should have 2 edges
-        assert_eq!(laplacian.edges().len(), 2);
     }
 
     #[test]

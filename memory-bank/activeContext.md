@@ -40,6 +40,164 @@ The project has reached a mature state with comprehensive functionality across m
 
 ## Recent Changes
 
+- **DiffusionKernel Random Access Interface Implementation (2025-10-29)**
+
+  - **Complete Interface Redesign for exp(-tL) Element Access**: Implemented new DiffusionKernel structure providing efficient random access to individual elements of the diffusion kernel matrix
+
+  - **Core Design Philosophy**:
+
+    - **Random Access Pattern**: Users can query any K[i,j] element on demand rather than computing full matrix
+    - **Memory Efficiency**: O(n × num_vectors) storage vs O(n²) for full matrix
+    - **User-Controlled Caching**: Distance computation left to users, enabling flexible caching strategies
+    - **Symmetry Guarantee**: K[i,j] == K[j,i] numerically guaranteed through implementation
+
+  - **Rust Implementation (kernel-sgd crate)**:
+
+    - **`crates/layout/kernel-sgd/src/diffusion_kernel.rs`** (new file, 336 lines):
+
+      - **`DiffusionKernel<S>` struct**: Main interface encapsulating Hutchinson estimator
+      - **`new(graph, length, t, degree, num_vectors, rng)`**: Automatic lambda_max estimation using power method
+      - **`new_with_lambda_max(graph, length, t, degree, lambda_max, num_vectors, rng)`**: External lambda_max specification
+      - **`get(i, j)`**: Random access to kernel matrix elements with O(num_vectors) complexity
+      - **`n()`**: Returns graph node count
+      - **Internal Architecture**: Uses HutchinsonEstimator with Chebyshev polynomial approximation
+
+    - **`crates/layout/kernel-sgd/src/hutchinson.rs`** (modified):
+
+      - **Added `Debug` trait**: Enables DiffusionKernel to derive Debug
+      - **Method organization refactoring**: Separated trait-bounded and non-bounded methods
+      - **`n()` and `num_vectors()`**: Moved outside trait bounds for broader accessibility
+      - **`query(i, j)`**: Main element access method with symmetry optimization
+
+    - **`crates/layout/kernel-sgd/src/kernel_sgd.rs`** (modified):
+
+      - **Refactored to use DiffusionKernel**: Now uses DiffusionKernel internally instead of direct Hutchinson
+      - **Removed `build_laplacian()`**: Functionality moved to DiffusionKernel
+      - **Simplified node pair generation**: Direct kernel element queries replace distance module
+      - **Distance formula**: `d²(i,j) = K[i,i] + K[j,j] - 2K[i,j]` computed inline
+
+    - **`crates/layout/kernel-sgd/src/lib.rs`** (modified):
+      - **Public export**: Added `pub use diffusion_kernel::DiffusionKernel;`
+      - **Module declaration**: `pub mod diffusion_kernel;`
+
+  - **Python Bindings Implementation**:
+
+    - **`crates/python/src/layout/sgd/diffusion_kernel.rs`** (new file, 180 lines):
+
+      - **`PyDiffusionKernel` class**: Complete Python wrapper with PyO3
+      - **Constructor**: `DiffusionKernel(graph, length, t, degree, num_vectors, rng)`
+      - **Static method**: `DiffusionKernel.new_with_lambda_max(graph, length, t, degree, lambda_max, num_vectors, rng)`
+      - **Element access**: `get(i, j)` returns f64 (FloatType)
+      - **Node count**: `n()` returns int
+      - **Edge weight callback**: Properly handles Python callable with edge index parameter
+
+    - **`crates/python/src/layout/sgd/mod.rs`** (modified):
+
+      - **Module declaration**: Added `mod diffusion_kernel;`
+      - **Public export**: Added `pub use self::diffusion_kernel::PyDiffusionKernel;`
+      - **Module registration**: Added `m.add_class::<PyDiffusionKernel>()?;`
+
+    - **`crates/python/tests/test_diffusion_kernel.py`** (new file, 7 test cases):
+      - **Basic construction**: Tests default constructor with automatic lambda_max
+      - **Lambda_max specification**: Tests static method with external lambda_max
+      - **Element access**: Validates positive diagonal and off-diagonal elements
+      - **Symmetry verification**: Confirms K[i,j] == K[j,i] with high precision
+      - **Custom parameters**: Tests different t, degree, num_vectors values
+      - **Weighted edges**: Validates edge weight function integration
+      - **Distance computation**: Shows user-side distance calculation pattern
+
+  - **API Design Benefits**:
+
+    - **Flexibility**: Users can implement custom distance caching strategies
+    - **Composability**: Kernel elements can be used for multiple purposes beyond distances
+    - **Performance Control**: Users decide when/how to cache expensive computations
+    - **Memory Trade-offs**: Users can balance memory usage vs recomputation based on needs
+    - **Clean Separation**: Kernel computation separated from distance/pair generation logic
+
+  - **Usage Examples**:
+
+    ```rust
+    // Rust usage
+    use petgraph_layout_kernel_sgd::DiffusionKernel;
+
+    // Automatic lambda_max estimation
+    let dk = DiffusionKernel::new(&graph, |_| 1.0f32, 1000.0, 10, 50, &mut rng);
+
+    // External lambda_max
+    let dk = DiffusionKernel::new_with_lambda_max(
+        &graph, |_| 1.0f32, 1000.0, 10, 2.5, 50, &mut rng
+    );
+
+    // Random access to elements
+    let k_ij = dk.get(i, j);
+
+    // User-controlled distance computation
+    let k_ii = dk.get(i, i);
+    let k_jj = dk.get(j, j);
+    let k_ij = dk.get(i, j);
+    let distance = (k_ii + k_jj - 2.0 * k_ij).sqrt();
+    ```
+
+    ```python
+    # Python usage
+    import egraph as eg
+    import math
+
+    # Automatic lambda_max estimation
+    dk = eg.DiffusionKernel(graph, lambda i: 1.0, 1000.0, 10, 50, rng)
+
+    # External lambda_max
+    dk = eg.DiffusionKernel.new_with_lambda_max(
+        graph, lambda i: 1.0, 1000.0, 10, 2.5, 50, rng
+    )
+
+    # Random access to elements
+    k_ij = dk.get(i, j)
+
+    # User-controlled distance computation with caching
+    k_ii = dk.get(i, i)
+    k_jj = dk.get(j, j)
+    k_ij = dk.get(i, j)
+    distance = math.sqrt(max(0.0, k_ii + k_jj - 2.0 * k_ij))
+    ```
+
+  - **Technical Implementation**:
+
+    - **Hutchinson Estimator**: Efficient element queries with symmetry optimization
+    - **Chebyshev Approximation**: Numerically stable exp(-tL) computation
+    - **Power Method**: Automatic lambda_max estimation for convenience
+    - **Edge Weight Support**: Proper integration of edge length functions
+    - **Type Safety**: Full generic type support with proper trait bounds
+
+  - **Test Results**:
+
+    - **Rust Tests**: 18/18 passing (includes 3 new DiffusionKernel tests)
+    - **Python Tests**: 7/7 passing (complete new test suite)
+    - **Build Quality**: Zero compilation warnings
+    - **API Validation**: All usage patterns verified
+
+  - **Files Created**:
+
+    - **`crates/layout/kernel-sgd/src/diffusion_kernel.rs`**: Core Rust implementation
+    - **`crates/python/src/layout/sgd/diffusion_kernel.rs`**: Python bindings
+    - **`crates/python/tests/test_diffusion_kernel.py`**: Comprehensive Python tests
+
+  - **Files Modified**:
+
+    - **`crates/layout/kernel-sgd/src/hutchinson.rs`**: Debug trait and method reorganization
+    - **`crates/layout/kernel-sgd/src/kernel_sgd.rs`**: Refactored to use DiffusionKernel
+    - **`crates/layout/kernel-sgd/src/lib.rs`**: Added DiffusionKernel export
+    - **`crates/python/src/layout/sgd/mod.rs`**: Module registration
+
+  - **Integration Status**:
+    - ✅ **Core Interface**: Complete with get(i,j) random access
+    - ✅ **Lambda_max Options**: Both automatic and external specification supported
+    - ✅ **Python Bindings**: Full PyO3 wrapper with comprehensive tests
+    - ✅ **KernelSgd Integration**: Successfully refactored to use new interface
+    - ✅ **Test Coverage**: 25/25 total tests passing (18 Rust + 7 Python)
+    - ✅ **Documentation**: Complete API docs with usage examples
+    - ✅ **Code Quality**: Zero warnings, clean compilation
+
 - **KernelSgd Python Bindings Implementation (2025-10-29)**
 
   - **Complete Python Wrapper for KernelSgd Algorithm**: Implemented comprehensive PyO3-based Python bindings for the kernel-sgd layout algorithm

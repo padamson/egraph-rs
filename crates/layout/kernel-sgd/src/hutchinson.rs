@@ -16,6 +16,7 @@ use rand::Rng;
 /// For symmetric matrices, we optimize by using K[i,j] = K[j,i] to effectively
 /// double the number of samples:
 /// K[i,j] ≈ (1/2k) [Σ_l V[i,l]*KV[j,l] + Σ_l V[j,l]*KV[i,l]]
+#[derive(Debug)]
 pub struct HutchinsonEstimator<T> {
     /// Random vectors matrix (n, num_vectors)
     v: Array2<T>,
@@ -25,10 +26,7 @@ pub struct HutchinsonEstimator<T> {
     num_vectors: usize,
 }
 
-impl<T> HutchinsonEstimator<T>
-where
-    T: Float + std::iter::Sum,
-{
+impl<T> HutchinsonEstimator<T> {
     /// Creates a new Hutchinson estimator from precomputed K @ V.
     ///
     /// # Parameters
@@ -44,6 +42,21 @@ where
         Self { v, kv, num_vectors }
     }
 
+    /// Returns the number of nodes in the kernel matrix.
+    pub fn n(&self) -> usize {
+        self.v.nrows()
+    }
+
+    /// Returns the number of random vectors used.
+    pub fn num_vectors(&self) -> usize {
+        self.num_vectors
+    }
+}
+
+impl<T> HutchinsonEstimator<T>
+where
+    T: Float + std::iter::Sum,
+{
     /// Queries the (i, j) element of the approximated kernel matrix with symmetry optimization.
     ///
     /// For symmetric matrices, uses K[i,j] = K[j,i] to effectively double the sample count:
@@ -94,16 +107,6 @@ where
 
         // Average both estimates for 2x effective samples
         (sum1 + sum2) / T::from(2 * self.num_vectors).unwrap()
-    }
-
-    /// Returns the number of nodes in the kernel matrix.
-    pub fn n(&self) -> usize {
-        self.v.nrows()
-    }
-
-    /// Returns the number of random vectors used.
-    pub fn num_vectors(&self) -> usize {
-        self.num_vectors
     }
 }
 
