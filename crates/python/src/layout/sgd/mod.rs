@@ -3,6 +3,7 @@
 //! This module provides Python bindings for various SGD-based layout algorithms.
 
 mod full;
+mod kernel_sgd;
 mod omega;
 mod schedulers;
 mod sgd;
@@ -11,6 +12,7 @@ mod sparse;
 use pyo3::prelude::*;
 
 pub use self::full::PyFullSgd;
+pub use self::kernel_sgd::PyKernelSgd;
 pub use self::omega::PyOmega;
 pub use self::schedulers::{
     PySchedulerConstant, PySchedulerExponential, PySchedulerLinear, PySchedulerQuadratic,
@@ -31,6 +33,7 @@ pub fn register(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     // Register SGD algorithm classes
     m.add_class::<PyFullSgd>()?;
     m.add_class::<PySparseSgd>()?;
+    m.add_class::<PyKernelSgd>()?;
     m.add_class::<PyOmega>()?;
     m.add_class::<PySgd>()?;
 

@@ -40,6 +40,115 @@ The project has reached a mature state with comprehensive functionality across m
 
 ## Recent Changes
 
+- **KernelSgd Python Bindings Implementation (2025-10-29)**
+
+  - **Complete Python Wrapper for KernelSgd Algorithm**: Implemented comprehensive PyO3-based Python bindings for the kernel-sgd layout algorithm
+
+  - **Implementation Details**:
+
+    - **`crates/python/src/layout/sgd/kernel_sgd.rs`** (new file, 197 lines):
+      - **`PyKernelSgd` class**: Complete Python wrapper with builder pattern API
+      - **Five configurable parameters**: t, num_vectors, degree, k, min_dist
+      - **Method chaining support**: All setter methods return `Py<Self>` for fluent API
+      - **Two build methods**:
+        - `build(graph, length, rng)`: Automatic lambda_max estimation using power method
+        - `build_with_lambda_max(graph, length, lambda_max, rng)`: External lambda_max specification
+      - **PyO3 0.26 compliance**: Uses `Python::attach` and `Py<PyAny>` throughout
+      - **EdgeRef trait import**: Proper use of `petgraph::visit::EdgeRef` for edge ID access
+
+  - **Module Integration**:
+
+    - **`crates/python/src/layout/sgd/mod.rs`**: Added kernel_sgd module and PyKernelSgd export
+    - **`crates/python/Cargo.toml`**: Added `petgraph-layout-kernel-sgd` dependency
+    - **Module registration**: Integrated with existing SGD module structure
+
+  - **Comprehensive Test Suite**:
+
+    - **`crates/python/tests/test_kernel_sgd.py`** (new file, 9 test cases, all passing):
+      - Default parameters testing
+      - Custom parameters testing
+      - Method chaining validation
+      - External lambda_max specification testing
+      - Weighted edges support testing
+      - Complete layout process testing
+      - All scheduler types testing (Constant, Linear, Quadratic, Exponential, Reciprocal)
+      - Diffusion time parameter testing
+      - Chebyshev polynomial degree testing
+
+  - **Python API Design**:
+
+    ```python
+    import egraph as eg
+
+    # Basic usage with automatic lambda_max estimation
+    kernel_sgd = eg.KernelSgd()
+    sgd = kernel_sgd.build(graph, lambda i: 1.0, rng)
+
+    # Advanced configuration with method chaining
+    kernel_sgd = (eg.KernelSgd()
+        .t(1000.0)           # Diffusion time parameter
+        .num_vectors(50)     # Hutchinson vectors (effective 100 with symmetry)
+        .degree(10)          # Chebyshev polynomial degree
+        .k(30)               # Random pairs per node
+        .min_dist(1e-3))     # Minimum distance
+
+    sgd = kernel_sgd.build(graph, lambda i: 1.0, rng)
+
+    # External lambda_max specification
+    sgd = kernel_sgd.build_with_lambda_max(graph, lambda i: 1.0, 2.5, rng)
+
+    # Complete layout workflow
+    drawing = eg.DrawingEuclidean2d.initial_placement(graph)
+    scheduler = sgd.scheduler(100, 0.1)
+
+    def step(eta):
+        sgd.shuffle(rng)
+        sgd.apply(drawing, eta)
+
+    scheduler.run(step)
+    ```
+
+  - **API Features**:
+
+    - **Builder Pattern**: Follows Omega and RdMds patterns for consistency
+    - **SGD Integration**: Returns standard `PySgd` instance compatible with all drawing spaces
+    - **Scheduler Support**: Works with all five scheduler types
+    - **Edge Weight Support**: Length function accepts edge indices for custom weights
+    - **Type Safety**: Proper f32 (Rust) to f64 (Python) conversion in edge weight callbacks
+
+  - **Implementation Benefits**:
+
+    - **Consistent API**: Matches RdMds and Omega binding patterns
+    - **Full Feature Access**: All KernelSgd parameters accessible from Python
+    - **Production Ready**: Comprehensive testing and clean code quality
+    - **Modern PyO3**: Up-to-date with PyO3 0.26 best practices
+    - **Zero Warnings**: Clean compilation with no clippy warnings in Python bindings
+
+  - **Test Results**:
+
+    - **Build Success**: `maturin develop --release` completed successfully
+    - **All Tests Pass**: 9/9 tests passing in 0.008 seconds
+    - **Code Quality**: No clippy warnings in Python bindings code
+    - **API Validation**: Complete workflow testing from construction to layout execution
+
+  - **Files Created**:
+
+    - **`crates/python/src/layout/sgd/kernel_sgd.rs`**: Complete Python wrapper implementation
+    - **`crates/python/tests/test_kernel_sgd.py`**: Comprehensive test suite
+
+  - **Files Modified**:
+
+    - **`crates/python/src/layout/sgd/mod.rs`**: Added kernel_sgd module and PyKernelSgd export
+    - **`crates/python/Cargo.toml`**: Added petgraph-layout-kernel-sgd dependency
+
+  - **Integration Status**:
+    - ✅ **Python Bindings**: Complete with all parameters accessible
+    - ✅ **Module Integration**: Properly registered in layout.sgd module
+    - ✅ **Test Coverage**: 9/9 comprehensive tests passing
+    - ✅ **Code Quality**: Clean compilation with zero warnings
+    - ✅ **Documentation**: Complete docstrings with parameter descriptions
+    - ✅ **API Consistency**: Follows established patterns from RdMds and Omega
+
 - **Kernel-SGD Layout Algorithm Implementation (2025-10-29)**
 
   - **Complete Diffusion Kernel-Based SGD Implementation**: Added new kernel-sgd layout algorithm using diffusion kernel exp(-tL) with efficient Chebyshev polynomial approximation and Hutchinson trace estimation
