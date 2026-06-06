@@ -305,7 +305,7 @@ where
     S: DrawingValue,
     R: Rng,
 {
-    Array1::from_shape_fn(n, |_| S::from_f32(rng.gen_range(-1.0..1.0)).unwrap())
+    Array1::from_shape_fn(n, |_| S::from_f32(rng.random_range(-1.0..1.0)).unwrap())
 }
 
 /// Performs Gram-Schmidt orthogonalization of a vector against known vectors.

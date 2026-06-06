@@ -125,7 +125,7 @@ where
     R: Rng,
 {
     Array2::from_shape_fn((n, num_vectors), |_| {
-        if rng.gen::<bool>() {
+        if rng.random::<bool>() {
             T::one()
         } else {
             -T::one()
