@@ -135,7 +135,7 @@ where
     // Step 2: Add random node pairs with Euclidean distances (avoiding duplicates)
     for i in 0..n {
         for _ in 0..k {
-            let j = rng.gen_range(0..n);
+            let j = rng.random_range(0..n);
             if i != j {
                 let pair_key = if i < j { (i, j) } else { (j, i) };
 
