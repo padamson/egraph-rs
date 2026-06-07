@@ -101,7 +101,7 @@ where
         // Create a Random Number Generator with seed if provided
         let mut rng = match self.seed {
             Some(seed) => StdRng::seed_from_u64(seed),
-            None => StdRng::from_os_rng(),
+            None => StdRng::from_rng(&mut rand::rng()),
         };
 
         // Store all nodes in a vector for random shuffling

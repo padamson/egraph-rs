@@ -4,7 +4,7 @@ use ndarray::{Array2, Zip};
 use petgraph::visit::{EdgeRef, IntoEdges, IntoNodeIdentifiers, NodeCount, NodeIndexable};
 use petgraph_drawing::{DrawingIndex, DrawingValue};
 use petgraph_layout_sgd::Sgd;
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::collections::{HashMap, HashSet};
 
 /// Omega builder for creating SGD instances from spectral embeddings.

@@ -40,7 +40,7 @@ impl JsRng {
     #[wasm_bindgen(constructor)]
     pub fn new() -> JsRng {
         JsRng {
-            rng: StdRng::from_os_rng(),
+            rng: StdRng::from_rng(&mut rand::rng()),
         }
     }
 

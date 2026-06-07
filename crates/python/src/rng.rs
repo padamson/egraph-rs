@@ -48,7 +48,7 @@ impl PyRng {
     #[new]
     fn new() -> PyRng {
         PyRng {
-            rng: StdRng::from_os_rng(),
+            rng: StdRng::from_rng(&mut rand::rng()),
         }
     }
 

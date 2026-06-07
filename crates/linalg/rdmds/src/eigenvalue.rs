@@ -5,7 +5,7 @@
 use ndarray::{Array1, Array2, ArrayView2, s};
 use petgraph::visit::{EdgeRef, IntoEdges, IntoNodeIdentifiers, NodeCount, NodeIndexable};
 use petgraph_drawing::{DrawingIndex, DrawingValue};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::collections::HashMap;
 
 /// IC(0) Incomplete Cholesky preconditioner for sparse symmetric positive definite matrices.

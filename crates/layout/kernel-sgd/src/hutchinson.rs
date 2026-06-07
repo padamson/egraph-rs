@@ -5,7 +5,7 @@
 
 use ndarray::Array2;
 use num_traits::Float;
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 /// Hutchinson estimator for querying kernel matrix elements.
 ///
